@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulation: Energieumsatz bei chemischen Reaktionen</title>
+<style>
+:root{--bg:#f3f6fb;--card:#fff;--ink:#1b2a3a;--muted:#5b6b7c;--line:#d8e0ea;--accent:#0b6bcb;--accent-d:#084f96;--warn:#c2410c;--ok:#15803d;--bad:#b91c1c;--navy:#12304f}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.4}
+header{background:var(--navy);color:#fff;padding:10px 20px;display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+header h1{margin:0;font-size:1.2rem}
+header p{margin:2px 0 0;font-size:.85rem;opacity:.85}
+.tabs{display:flex;border:1px solid #5d7fa3;border-radius:10px;overflow:hidden}
+.tabs button{border:0;border-radius:0;background:transparent;color:#fff;padding:8px 12px;font-size:.92rem;min-height:0}
+.tabs button.sel{background:#fff;color:var(--navy);font-weight:700}
+.embed header{display:none}
+.layout{display:grid;grid-template-columns:minmax(320px,1.15fr) minmax(300px,.85fr);gap:12px;padding:12px;max-width:1300px;margin:0 auto;align-items:start}
+@media(max-width:860px){.layout{grid-template-columns:1fr}}
+.stage,.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+svg{display:block;width:100%;height:auto}
+.caption{margin:8px 0 0;padding:9px 12px;border-radius:10px;background:#eef5fd;border-left:5px solid var(--accent);font-size:1rem;min-height:2.8em}
+.caption.result{background:#ecfdf3;border-left-color:var(--ok)}
+.caption.warn{background:#fff4ec;border-left-color:var(--warn)}
+button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--ink);padding:8px 14px;min-height:42px}
+button:hover:not(:disabled){border-color:var(--accent)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:var(--accent);border-color:var(--accent-d);color:#fff;font-weight:600}
+button.on{background:#fff4ec;border-color:var(--warn);color:var(--warn);font-weight:700}
+.ctl{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 10px}
+h2{margin:0 0 6px;font-size:1.05rem;color:var(--navy)}
+.hint{font-size:.88rem;color:var(--muted)}
+.readout{display:flex;gap:14px;flex-wrap:wrap;font-variant-numeric:tabular-nums;margin:4px 0 6px}
+.readout b{font-size:1.15rem;color:var(--navy)}
+.checks{margin:6px 0 0;padding-left:0;list-style:none;font-size:.95rem}
+.checks li{margin:3px 0}
+.checks li.ok{color:var(--ok)}
+.sel2{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0}
+.sel2 button.sel{background:#dbeafe;border-color:var(--accent);font-weight:700}
+@keyframes flash{0%{opacity:1}100%{opacity:0}}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>Simulation: Energieumsatz bei chemischen Reaktionen</h1><p>Drei Versuche aus dem Unterricht zum Selbst-Durchführen</p></div>
+  <div class="tabs" id="tabs"><button data-v="1">Diiodpentaoxid</button><button data-v="2">Kupferchlorid + Zink</button><button data-v="3">Knallgas + Platin</button></div>
+</header>
+<div class="layout">
+  <section class="stage">
+    <svg id="svg" viewBox="0 0 520 430" role="img" aria-label="Versuchsaufbau"></svg>
+    <div class="caption" id="cap"></div>
+  </section>
+  <section class="card">
+    <h2 id="title"></h2>
+    <div class="hint" id="intro"></div>
+    <div class="ctl" id="ctl"></div>
+    <div class="readout"><span>Zeit: <b id="rt">0 s</b></span><span id="rTlab">Temperatur: <b id="rT">20 °C</b></span></div>
+    <svg id="graph" viewBox="0 0 400 210" aria-label="Temperatur-Zeit-Diagramm"></svg>
+    <div class="hint" style="margin-top:4px">Das Diagramm zeichnet die Temperatur über die Zeit auf (Zeit beschleunigt).</div>
+    <h2 style="margin-top:10px">Deine Aufträge</h2>
+    <ul class="checks" id="checks"></ul>
+    <div class="ctl"><button id="reset">↺ Versuch neu starten</button></div>
+  </section>
+</div>
+<script>
+(function(){
+'use strict';
+var $ = function(id){ return document.getElementById(id); };
+var q = new URLSearchParams(location.search);
+var V = +(q.get('v') || 1);
+if (q.has('embed')) document.body.classList.add('embed');
+var NS = 'http://www.w3.org/2000/svg';
+
+/* ---------- Zustand ---------- */
+var st;
+function fresh() {
+  return { t: 0, T: 20, p: 0, rate: 0, burner: false, started: false, gas: 0, glimm: 0, flags: {}, hist: [], stop: false,
+           cup: 'none', pt: true, filled: false, placed: false, boom: 0, cupY: 0, ptT: 20, wait: 0 };
+}
+var FL = { v1: {}, v2: {}, v3: {} };
+
+/* ---------- Versuchsbeschreibungen ---------- */
+var CFG = {
+  1: { title: 'Versuch 1: Diiodpentaoxid wird erhitzt', yMax: 600,
+       intro: 'Im Reagenzglas liegt weißes Diiodpentaoxid. Darunter steht ein Brenner. Am Glas misst ein Thermometer die Temperatur.',
+       tasks: [['heat', 'Erhitze, bis die Zersetzung läuft.'], ['off', 'Schalte den Brenner aus, während die Zersetzung läuft. Was passiert?'], ['glimm', 'Halte einen glimmenden Holzspan an die Öffnung, während Gas entsteht.']] },
+  2: { title: 'Versuch 2: Kupferchlorid und Zink', yMax: 120,
+       intro: 'Im Reagenzglas liegt ein Gemisch aus Kupferchlorid (braun-grün) und Zinkpulver (grau). Ein Thermometer steckt im Gemisch. Ein paar Tropfen Wasser starten die Reaktion.',
+       tasks: [['start', 'Starte die Reaktion mit einigen Wassertropfen.'], ['peak', 'Beobachte das Thermometer, bis die Reaktion beendet ist.']] },
+  3: { title: 'Versuch 3: Knallgas und Platin', yMax: 800,
+       intro: 'Ein kleiner Kunststoffbecher wird mit Knallgas (Wasserstoff + Sauerstoff) gefüllt und umgedreht auf einen Stopfen gesetzt. Auf dem Stopfen kann eine Platinkugel sitzen.',
+       tasks: [['nocat', 'Setze den Becher auf den Stopfen <b>ohne</b> Platinkugel und warte.'], ['cat', 'Wiederhole den Versuch <b>mit</b> Platinkugel.']] }
+};
+
+/* ---------- Zeichnen: Aufbau ---------- */
+function el(tag, a, parent) { var e = document.createElementNS(NS, tag); for (var k in a) e.setAttribute(k, a[k]); (parent || $('svg')).appendChild(e); return e; }
+var R = {};
+function buildScene() {
+  var s = $('svg'); s.innerHTML = '';
+  el('rect', { x: 0, y: 0, width: 520, height: 430, fill: '#fbfcfe' });
+  el('rect', { x: 20, y: 398, width: 480, height: 14, rx: 4, fill: '#64748b' }); // Tisch
+  if (V === 1 || V === 2) {
+    // Stativ
+    el('rect', { x: 60, y: 384, width: 140, height: 14, rx: 3, fill: '#475569' });
+    el('rect', { x: 76, y: 60, width: 8, height: 326, fill: '#94a3b8' });
+    el('rect', { x: 80, y: 120, width: 140, height: 8, fill: '#94a3b8' });
+    el('rect', { x: 212, y: 112, width: 26, height: 24, rx: 4, fill: '#64748b' });
+    // Reagenzglas
+    var gx = 225, top = 70, bot = 300;
+    R.glass = el('path', { d: 'M' + (gx - 20) + ',' + top + ' L' + (gx - 20) + ',' + (bot - 20) + ' A20,20 0 0 0 ' + (gx + 20) + ',' + (bot - 20) + ' L' + (gx + 20) + ',' + top, fill: '#f1f6fb', stroke: '#6b8196', 'stroke-width': 3 });
+    R.gas = el('rect', { x: gx - 18, y: top + 2, width: 36, height: bot - top - 30, fill: '#7c3aed', opacity: 0 });
+    R.crys = el('g', {});
+    for (var i = 0; i < 14; i++) el('circle', { cx: gx - 15 + (i % 2) * 30 + Math.random() * 3, cy: top + 20 + i * 7, r: 2.4, fill: '#111827', opacity: 0, class: 'cr' }, R.crys);
+    R.solid = el('path', { d: '', fill: V === 1 ? '#f8fafc' : '#7c8a5a', stroke: '#64748b', 'stroke-width': 1.5 });
+    R.prod = el('g', {});
+    if (V === 2) for (var j = 0; j < 18; j++) el('circle', { cx: gx - 14 + Math.random() * 28, cy: bot - 8 - Math.random() * 40, r: 3 + Math.random() * 2, fill: '#c2410c', opacity: 0, class: 'cu' }, R.prod);
+    el('rect', { x: gx - 22, y: top - 4, width: 44, height: 10, rx: 3, fill: '#e2e8f0', stroke: '#6b8196' });
+    // Thermometer
+    var tx = gx + 4, ttop = 40, tbot = 290;
+    el('rect', { x: tx - 6, y: ttop, width: 12, height: tbot - ttop, rx: 6, fill: '#fff', stroke: '#6b8196', 'stroke-width': 2 });
+    R.therm = el('rect', { x: tx - 3, y: tbot - 10, width: 6, height: 10, fill: '#dc2626' });
+    el('circle', { cx: tx, cy: tbot, r: 9, fill: '#dc2626', stroke: '#6b8196', 'stroke-width': 2 });
+    R.thermTop = ttop + 8; R.thermBot = tbot - 8;
+    R.tlabel = el('text', { x: gx - 32, y: ttop + 14, 'text-anchor': 'end', 'font-size': 15, 'font-weight': 700, fill: '#12304f' }); R.tlabel.textContent = '20 °C';
+    if (V === 1) {
+      // Brenner
+      el('rect', { x: gx - 24, y: 360, width: 48, height: 24, rx: 4, fill: '#475569' });
+      el('rect', { x: gx - 7, y: 322, width: 14, height: 40, fill: '#64748b' });
+      R.flame = el('g', { opacity: 0 });
+      el('path', { d: 'M' + gx + ',' + 280 + ' C' + (gx - 16) + ',305 ' + (gx - 10) + ',322 ' + gx + ',322 C' + (gx + 10) + ',322 ' + (gx + 16) + ',305 ' + gx + ',280 Z', fill: '#60a5fa', opacity: .8 }, R.flame);
+      el('path', { d: 'M' + gx + ',' + 296 + ' C' + (gx - 7) + ',310 ' + (gx - 5) + ',320 ' + gx + ',320 C' + (gx + 5) + ',320 ' + (gx + 7) + ',310 ' + gx + ',296 Z', fill: '#1d4ed8' }, R.flame);
+      // Glimmspan
+      R.span = el('g', { transform: 'translate(330,40)' });
+      el('rect', { x: 0, y: 0, width: 120, height: 6, rx: 2, fill: '#b45309', transform: 'rotate(-20)' }, R.span);
+      R.ember = el('circle', { cx: 0, cy: 3, r: 5, fill: '#f97316' }, R.span);
+      R.spanFlame = el('path', { d: 'M0,0 C-12,-10 -6,-30 0,-38 C6,-30 12,-10 0,0 Z', fill: '#f59e0b', opacity: 0 }, R.span);
+      var l1 = el('text', { x: 440, y: 62, 'font-size': 12, fill: '#5b6b7c' }); l1.textContent = 'Glimmspan';
+    }
+    var lab = el('text', { x: 20, y: 30, 'font-size': 14, 'font-weight': 700, fill: '#12304f' }); lab.textContent = V === 1 ? 'Diiodpentaoxid' : 'Kupferchlorid + Zink';
+  } else {
+    // Versuch 3: Glasplatte, Stopfen, Becher
+    el('rect', { x: 120, y: 386, width: 280, height: 12, rx: 3, fill: '#cbd5e1', stroke: '#94a3b8' });
+    el('path', { d: 'M230,386 L236,350 L284,350 L290,386 Z', fill: '#9ca3af', stroke: '#6b7280' });
+    R.pt = el('circle', { cx: 260, cy: 342, r: 9, fill: '#9ca3af', stroke: '#4b5563', 'stroke-width': 2 });
+    R.ptGlow = el('circle', { cx: 260, cy: 342, r: 26, fill: '#f97316', opacity: 0 });
+    R.cup = el('g', {});
+    R.cupGas = el('path', { d: 'M222,240 L298,240 L292,352 L228,352 Z', fill: '#bfdbfe', opacity: 0 }, R.cup);
+    el('path', { d: 'M222,240 L298,240 L292,352 L228,352 Z', fill: 'none', stroke: '#64748b', 'stroke-width': 3 }, R.cup);
+    el('rect', { x: 218, y: 234, width: 84, height: 8, rx: 3, fill: '#94a3b8' }, R.cup);
+    R.flash = el('circle', { cx: 260, cy: 300, r: 120, fill: '#fde68a', opacity: 0 });
+    R.bang = el('text', { x: 260, y: 200, 'text-anchor': 'middle', 'font-size': 40, 'font-weight': 800, fill: '#b91c1c', opacity: 0 }); R.bang.textContent = 'KNALL!';
+    R.ptLbl = el('text', { x: 300, y: 372, 'font-size': 13, fill: '#12304f' });
+    R.tlabel = el('text', { x: 300, y: 330, 'font-size': 15, 'font-weight': 700, fill: '#12304f' });
+    var lb = el('text', { x: 20, y: 30, 'font-size': 14, 'font-weight': 700, fill: '#12304f' }); lb.textContent = 'Becher mit Knallgas auf Stopfen';
+  }
+}
+
+/* ---------- Bedienelemente ---------- */
+function buildCtl() {
+  var c = $('ctl');
+  if (V === 1) c.innerHTML = '<button id="bBurn" class="primary">🔥 Brenner an</button><button id="bGlimm">Glimmspan an die Öffnung</button>';
+  if (V === 2) c.innerHTML = '<button id="bWater" class="primary">💧 Einige Tropfen Wasser zugeben</button>';
+  if (V === 3) c.innerHTML = '<div style="width:100%"><span class="hint">Stopfen:</span><div class="sel2"><button id="bNoPt">ohne Platinkugel</button><button id="bPt" class="sel">mit Platinkugel</button></div></div><button id="bFill" class="primary">Becher mit Knallgas füllen und aufsetzen</button>';
+  if (V === 1) {
+    $('bBurn').onclick = function(){ st.burner = !st.burner; if (!st.burner && st.rate > 0.0005) { FL.v1.off = true; } this.textContent = st.burner ? 'Brenner aus' : '🔥 Brenner an'; this.className = st.burner ? 'on' : 'primary'; };
+    $('bGlimm').onclick = function(){ st.glimm = 3.0; if (st.gas > 0.15) FL.v1.glimm = true; };
+  }
+  if (V === 2) $('bWater').onclick = function(){ if (!st.started) { st.started = true; FL.v2.start = true; this.disabled = true; } };
+  if (V === 3) {
+    $('bNoPt').onclick = function(){ if (st.placed && !st.done3) return; st.pt = false; this.className = 'sel'; $('bPt').className = ''; resetCup(); };
+    $('bPt').onclick = function(){ if (st.placed && !st.done3) return; st.pt = true; this.className = 'sel'; $('bNoPt').className = ''; resetCup(); };
+    $('bFill').onclick = function(){ resetCup(); st.filled = true; st.placed = true; st.wait = 0; this.disabled = true; };
+  }
+}
+function resetCup() { st.filled = false; st.placed = false; st.boom = 0; st.cupY = 0; st.ptT = 20; st.wait = 0; st.done3 = false; st.t = 0; st.hist = []; if ($('bFill')) $('bFill').disabled = false; }
+
+/* ---------- Modell ---------- */
+function stepModel(dt) {
+  if (V === 1) {
+    dt *= 6;
+    var heat = st.burner ? 45 : 0, loss = 0.085 * (st.T - 20);
+    st.rate = (st.T > 300 && st.p < 1) ? 0.0002 * (st.T - 300) * (1 - st.p) : 0;
+    st.p = Math.min(1, st.p + st.rate * dt);
+    st.T += (heat - loss - 900 * st.rate) * dt;
+    st.gas = Math.max(0, Math.min(1, st.gas + (st.rate * 40 - 0.25 * st.gas) * dt));
+    st.glimm = Math.max(0, st.glimm - dt / 6);
+    if (st.p > 0.08) FL.v1.heat = true;
+    st.t += dt;
+  } else if (V === 2) {
+    dt *= 2;
+    var r = st.started && st.p < 1 ? 0.05 * (1 - st.p) * (1 + (st.T - 20) / 25) : 0;
+    st.p = Math.min(1, st.p + r * dt);
+    st.T += (95 * r - 0.012 * (st.T - 20)) * dt;
+    st.rate = r;
+    if (st.started) st.t += dt;
+    if (st.p > 0.97 && st.T < st.maxT - 3) FL.v2.peak = true;
+    st.maxT = Math.max(st.maxT || 20, st.T);
+  } else {
+    dt *= 3;
+    if (st.placed && st.filled && st.boom === 0) {
+      st.t += dt; st.wait += dt;
+      if (st.pt) { st.ptT += (0.05 * (st.ptT - 20) + 18) * dt * (st.ptT < 700 ? 1 : 0); if (st.ptT > 600) { st.boom = 1; st.done3 = true; FL.v3.cat = true; } }
+      else if (st.wait > 45) { st.done3 = true; FL.v3.nocat = true; }
+    }
+    if (st.boom > 0) { st.boom += dt; st.cupY = Math.min(400, st.cupY + 260 * dt); st.ptT = Math.max(20, st.ptT - 60 * dt); st.t += dt; }
+    st.T = st.ptT;
+  }
+  if (!st.hist.length || st.t - st.hist[st.hist.length - 1][0] >= 0.5) st.hist.push([st.t, st.T]);
+}
+
+/* ---------- Darstellung ---------- */
+function render() {
+  var cfg = CFG[V];
+  $('rt').textContent = Math.round(st.t) + ' s';
+  $('rT').textContent = Math.round(st.T) + ' °C';
+  if (V === 1 || V === 2) {
+    var frac = Math.max(0, Math.min(1, (st.T - 0) / cfg.yMax));
+    var h = (R.thermBot - R.thermTop) * frac;
+    R.therm.setAttribute('y', R.thermBot - h); R.therm.setAttribute('height', h + 10);
+    R.tlabel.textContent = Math.round(st.T) + ' °C';
+    var gx = 225, bot = 300, amt = V === 1 ? (1 - st.p) : 1, sh = 8 + 42 * amt;
+    R.solid.setAttribute('d', 'M' + (gx - 18) + ',' + (bot - 20 - sh + 20) + ' L' + (gx + 18) + ',' + (bot - 20 - sh + 20) + ' L' + (gx + 18) + ',' + (bot - 20) + ' A18,18 0 0 1 ' + (gx - 18) + ',' + (bot - 20) + ' Z');
+    if (V === 1) {
+      R.solid.setAttribute('opacity', st.p > 0.97 ? 0 : 1);
+      R.gas.setAttribute('opacity', (0.55 * st.gas).toFixed(2));
+      Array.prototype.forEach.call(document.querySelectorAll('.cr'), function(c, i){ c.setAttribute('opacity', st.p * 14 > i ? 0.9 : 0); });
+      R.flame.setAttribute('opacity', st.burner ? 1 : 0);
+      var near = st.glimm > 0;
+      R.span.setAttribute('transform', near ? 'translate(246,62)' : 'translate(330,40)');
+      R.spanFlame.setAttribute('opacity', near && st.gas > 0.15 ? 1 : 0);
+    } else {
+      R.solid.setAttribute('fill', mix('#7c8a5a', '#9ca3af', st.p));
+      Array.prototype.forEach.call(document.querySelectorAll('.cu'), function(c, i){ c.setAttribute('opacity', st.p * 18 > i ? 1 : 0); });
+    }
+  } else {
+    R.cup.setAttribute('transform', 'translate(0,' + (-st.cupY) + ')');
+    R.cup.setAttribute('opacity', st.placed || st.cupY > 0 ? 1 : 0.35);
+    R.cupGas.setAttribute('opacity', st.filled && st.boom === 0 ? 0.6 : 0);
+    R.pt.setAttribute('opacity', st.pt ? 1 : 0);
+    var g = Math.max(0, Math.min(1, (st.ptT - 250) / 400));
+    R.pt.setAttribute('fill', st.pt ? mix('#9ca3af', '#fb923c', g) : '#9ca3af');
+    R.ptGlow.setAttribute('opacity', st.pt ? (0.5 * g).toFixed(2) : 0);
+    var fl = st.boom > 0 && st.boom < 1.2 ? 1 - st.boom / 1.2 : 0;
+    R.flash.setAttribute('opacity', (0.8 * fl).toFixed(2)); R.bang.setAttribute('opacity', st.boom > 0 && st.boom < 4 ? 1 : 0);
+    R.ptLbl.textContent = st.pt ? (st.boom > 0 ? 'Platinkugel: unverändert' : 'Platinkugel') : 'Stopfen ohne Platin';
+    R.tlabel.textContent = st.pt ? Math.round(st.ptT) + ' °C' : '';
+  }
+  drawGraph(); caption(); checks();
+}
+function mix(a, b, f) { var pa = [1, 3, 5].map(function(i){ return parseInt(a.substr(i, 2), 16); }), pb = [1, 3, 5].map(function(i){ return parseInt(b.substr(i, 2), 16); }); return 'rgb(' + pa.map(function(x, i){ return Math.round(x + (pb[i] - x) * f); }).join(',') + ')'; }
+function drawGraph() {
+  var g = $('graph'), cfg = CFG[V], W = 400, H = 210, x0 = 44, y0 = 180, x1 = 390, y1 = 26;
+  var tMax = Math.max(60, Math.ceil((st.t + 5) / 30) * 30);
+  var h = '<rect x="0" y="0" width="400" height="210" fill="#fff"/>';
+  for (var k = 0; k <= 4; k++) { var y = y0 - (y0 - y1) * k / 4, v = Math.round(cfg.yMax * k / 4); h += '<line x1="' + x0 + '" y1="' + y + '" x2="' + x1 + '" y2="' + y + '" stroke="#eef2f7"/><text x="' + (x0 - 6) + '" y="' + (y + 4) + '" font-size="11" text-anchor="end" fill="#5b6b7c">' + v + '</text>'; }
+  h += '<line x1="' + x0 + '" y1="' + y0 + '" x2="' + x1 + '" y2="' + y0 + '" stroke="#1b2a3a"/><line x1="' + x0 + '" y1="' + y0 + '" x2="' + x0 + '" y2="' + y1 + '" stroke="#1b2a3a"/>';
+  h += '<text x="' + x1 + '" y="' + (y0 + 22) + '" font-size="11" text-anchor="end" fill="#5b6b7c">Zeit in s (0 – ' + tMax + ')</text><text x="6" y="10" font-size="11" fill="#5b6b7c">' + (V === 3 ? 'T Platin in °C' : 'T in °C') + '</text>';
+  if (V === 1) h += '<line x1="' + x0 + '" y1="' + (y0 - (y0 - y1) * 300 / cfg.yMax) + '" x2="' + x1 + '" y2="' + (y0 - (y0 - y1) * 300 / cfg.yMax) + '" stroke="#c2410c" stroke-dasharray="5 4"/><text x="' + (x1 - 2) + '" y="' + (y0 - (y0 - y1) * 300 / cfg.yMax - 4) + '" font-size="10" text-anchor="end" fill="#c2410c">ab hier zersetzt sich der Stoff</text>';
+  var pts = st.hist.map(function(p){ return (x0 + (x1 - x0) * p[0] / tMax).toFixed(1) + ',' + (y0 - (y0 - y1) * Math.min(1, p[1] / cfg.yMax)).toFixed(1); }).join(' ');
+  h += '<polyline points="' + pts + '" fill="none" stroke="#0b6bcb" stroke-width="2.5"/>';
+  g.innerHTML = h;
+}
+function caption() {
+  var c = $('cap'), t = '', cls = '';
+  if (V === 1) {
+    if (!st.burner && st.p < 0.02) t = 'Schalte den Brenner ein und beobachte Thermometer und Reagenzglas.';
+    else if (st.burner && st.rate < 0.0005 && st.p < 0.02) t = 'Das Glas wird heiß. Noch passiert nichts mit dem weißen Pulver.';
+    else if (st.rate > 0.0005 && st.burner) { t = 'Die Zersetzung läuft: Violettes Iod-Gas steigt auf und setzt sich oben als schwarze Kristalle ab.'; if (FL.v1.off) t += ' Du hast vorhin gesehen: Ohne Brenner stoppt sie.'; }
+    else if (st.rate > 0.0005 && !st.burner) { t = 'Brenner aus: Die Temperatur fällt, die Zersetzung wird langsamer …'; cls = 'warn'; }
+    else if (!st.burner && st.p > 0.02 && st.p < 0.97) { t = 'Die Zersetzung ist zum Stillstand gekommen, obwohl noch Diiodpentaoxid übrig ist. Sie läuft nur bei ständiger Energiezufuhr → endotherm.'; cls = 'result'; }
+    else if (st.p >= 0.97) { t = 'Das Diiodpentaoxid ist vollständig zersetzt.'; cls = 'result'; }
+    if (st.glimm > 0) { t = st.gas > 0.15 ? 'Der Glimmspan flammt auf: Es entsteht Sauerstoff.' : 'Der Glimmspan glimmt nur weiter: Gerade entsteht kein Sauerstoff.'; cls = st.gas > 0.15 ? 'result' : 'warn'; }
+  } else if (V === 2) {
+    if (!st.started) t = 'Gib einige Tropfen Wasser zu und beobachte das Thermometer.';
+    else if (st.p < 0.97) t = 'Die Reaktion läuft von selbst: Das Gemisch wird heiß, rötliches Kupfer bildet sich. Es wird nicht geheizt!';
+    else { t = 'Die Reaktion ist beendet. Höchste Temperatur: ' + Math.round(st.maxT) + ' °C. Die Energie kam aus den Stoffen selbst → exotherm.'; cls = 'result'; }
+  } else {
+    if (!st.placed) t = 'Wähle den Stopfen und setze den Becher mit Knallgas auf.';
+    else if (st.boom > 0) { t = 'Die Platinkugel hat sich durch die Reaktion an ihrer Oberfläche bis zum Glühen erhitzt und das Knallgas entzündet. Danach ist sie unverändert.'; cls = 'result'; }
+    else if (st.pt) t = 'Wasserstoff und Sauerstoff reagieren an der Platin-Oberfläche schon bei Raumtemperatur. Die Kugel wird immer heißer …';
+    else if (!st.done3) t = 'Warte … (' + Math.round(st.wait) + ' s)';
+    else { t = 'Ohne Platin passiert nichts: Bei Raumtemperatur fehlt die Aktivierungsenergie.'; cls = 'warn'; }
+  }
+  c.textContent = t; c.className = 'caption' + (cls ? ' ' + cls : '');
+}
+function checks() {
+  var f = FL['v' + V];
+  $('checks').innerHTML = CFG[V].tasks.map(function(x){ return '<li class="' + (f[x[0]] ? 'ok' : '') + '">' + (f[x[0]] ? '✓ ' : '○ ') + x[1] + '</li>'; }).join('');
+  var all = CFG[V].tasks.every(function(x){ return f[x[0]]; });
+  var msg = { type: 'energie-sim', v: V, flags: f, done: all };
+  var j = JSON.stringify(msg);
+  if (j !== checks.last) { checks.last = j; try { window.parent.postMessage(msg, '*'); } catch (e) {} }
+}
+
+/* ---------- Ablauf ---------- */
+function setV(v) {
+  V = v; st = fresh();
+  document.querySelectorAll('#tabs button').forEach(function(b){ b.classList.toggle('sel', +b.dataset.v === V); });
+  $('title').textContent = CFG[V].title; $('intro').textContent = CFG[V].intro;
+  buildScene(); buildCtl(); render();
+}
+document.querySelectorAll('#tabs button').forEach(function(b){ b.addEventListener('click', function(){ setV(+b.dataset.v); }); });
+$('reset').addEventListener('click', function(){ setV(V); });
+var last = performance.now();
+function loop(now) { var dt = Math.min(0.1, (now - last) / 1000); last = now; stepModel(dt); render(); requestAnimationFrame(loop); }
+setV(V);
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
