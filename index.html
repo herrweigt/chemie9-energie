@@ -271,9 +271,14 @@ body.teach .teach-sol{display:block;background:#fff7ed;border:1px dashed #c2410c
         <p><b>B:</b> Bei Bestrahlung mit (violettem) Licht oder einem Blitz explodiert das Gasgemisch.</p>
         <p><b>E:</b> <span class="eq">Chlor (g) + Wasserstoff (g) → Chlorwasserstoff (g)</span></p>
         <p>Das Licht liefert den „Startschuss“. Danach läuft die exotherme Reaktion explosionsartig von selbst weiter.</p>
-        <p class="hint">Zum Ansehen: <a href="https://www.youtube.com/watch?v=63MUqBGMMr8" target="_blank" rel="noopener">Video zum Versuch</a></p>
+        
       </div>
     </div>
+    <h3>Video: Chlorknallgas</h3>
+    <p>Schau dir das Video vollständig an. Achte darauf, <b>wann</b> das Gemisch reagiert.</p>
+    <div class="video"><iframe src="https://www.youtube-nocookie.com/embed/63MUqBGMMr8?rel=0" title="Chlorknallgas" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen loading="lazy"></iframe></div>
+    <p class="hint">Video lädt nicht? <a href="https://www.youtube.com/watch?v=63MUqBGMMr8" target="_blank" rel="noopener">Auf YouTube öffnen</a></p>
+    <div id="chkVideoCl"></div>
     <div class="merke"><b>Merke:</b> Viele Reaktionen benötigen zum Start eine bestimmte Menge Energie. Danach laufen exotherme Reaktionen von alleine ab. Die nötige Startenergie nennt man <b>Aktivierungsenergie E<sub>A</sub></b>.</div>
   </div>
   <div class="card">
@@ -936,6 +941,7 @@ $$('.fsBtn').forEach(function(b){ b.addEventListener('click', function(){ var w 
 $$('.fbBtn').forEach(function(b){ b.addEventListener('click', function(){ var v = +b.dataset.v, d = document.createElement('div'); d.className = 'exp'; d.textContent = FBTXT[v]; b.parentNode.after(d); b.disabled = true; simState(v, true, true); });
   addSolver(b, function(){ simState(+b.dataset.v, true); }); });
 check($('chkVideo'), 'video', 'Ich habe das Video vollständig angesehen.');
+check($('chkVideoCl'), 'videoCl', 'Ich habe das Video zum Chlorknallgas vollständig angesehen.');
 mc($('c0'), 'c0', { q: 'Warum entzündet sich das Knallgas nur, wenn die Platinkugel dabei ist?', tip: 'Schau dir in der Simulation die Temperatur der Platinkugel an.', opts: [
   { t: 'An der Platinoberfläche reagiert das Gas schon kalt, die Kugel glüht und zündet.', ok: true, fb: 'Richtig: Platin senkt die Aktivierungsenergie. Die frei werdende Energie heizt die Kugel bis zum Glühen.' },
   { t: 'Die Platinkugel ist vorher erhitzt worden und bringt die Wärme von außen mit.', fb: 'Die Kugel hat zu Beginn Raumtemperatur. Sie wird erst durch die Reaktion heiß.' },
@@ -947,7 +953,7 @@ function need(i) {
     case 1: return chk(['r1', 'r2', 'mat'], { r1: 'Wiederholung 1', r2: 'Wiederholung 2', mat: 'Material' });
     case 2: return chk(['a1', 'sim1', 'a2', 'sim2', 'a3', 'a4', 'a5', 'f10a', 'f10b', 'f10c', 'f10d', 'he6', 'draw1'], { a1: 'Energieform', sim1: 'Simulation Versuch 1', a2: 'Versuch 1', sim2: 'Simulation Versuch 2', a3: 'Versuch 2', a4: 'Rechnung', a5: 'ΔEi positiv', f10a: 'Übung a', f10b: 'Übung b', f10c: 'Übung c', f10d: 'Übung d', he6: 'Hefteintrag 6', draw1: 'Zeichenauftrag' });
     case 3: return chk(['hvV', 'hvObs', 'hv1a', 'hv1b', 'heHv'], { hvV: 'Vermutung', hvObs: 'Beobachtung', hv1a: 'Auswertung 1', hv1b: 'Auswertung 2', heHv: 'Hefteintrag Heimversuch' });
-    case 4: return chk(['b1', 'simB', 'ea', 'b2', 'b3', 'lab', 'b4', 'schema', 'he61', 'draw2'], { b1: 'Streichholz', simB: 'Simulation a)', ea: 'Simulation b)', b2: 'c)', b3: 'd)', lab: 'e) Diagramm', b4: 'f) Zuckerwürfel', schema: 'g) Reaktionsschema', he61: 'Hefteintrag 6.1', draw2: 'Zeichenauftrag' });
+    case 4: return chk(['b1', 'videoCl', 'simB', 'ea', 'b2', 'b3', 'lab', 'b4', 'schema', 'he61', 'draw2'], { b1: 'Streichholz', videoCl: 'Video Chlorknallgas', simB: 'Simulation a)', ea: 'Simulation b)', b2: 'c)', b3: 'd)', lab: 'e) Diagramm', b4: 'f) Zuckerwürfel', schema: 'g) Reaktionsschema', he61: 'Hefteintrag 6.1', draw2: 'Zeichenauftrag' });
     case 5: return chk(['video', 'sim3', 'c0', 'simC', 'c1', 'st', 'stCmp', 'c2', 'taste', 'hv2a', 'hv2b', 'hv2t', 'he62', 'draw3'], { video: 'Video', sim3: 'Simulation Knallgas', c0: 'Frage zum Platin', simC: 'Energieberg mit Katalysator', c1: 'Katalysator-Frage', st: 'Stellungnahme', stCmp: 'Vergleich Musterlösung', c2: 'Kontaktlinsen', taste: 'Geschmacksprotokoll', hv2a: 'Brot süß', hv2b: 'Amylase', hv2t: 'Erklärung Amylase', he62: 'Hefteintrag 6.2', draw3: 'Zeichenauftrag' });
     case 6: var k = ['sort', 'tr']; TRAIN.forEach(function(t, j){ k.unshift('tr' + j); }); var n = { sort: 'Sortieren', tr: 'Transferaufgabe' }; TRAIN.forEach(function(t, j){ n['tr' + j] = 'Frage ' + (j + 1); }); return chk(k, n);
   }
